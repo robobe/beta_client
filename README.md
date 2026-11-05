@@ -85,3 +85,19 @@ The caller owns the connection and must send values continuously at a rate appro
 TCP and serial writes block with a default 20 ms timeout, matching one 50 Hz control period. Override `timeout` to fit your loop budget; TCP connection establishment has a separate `connect_timeout` default of 3 seconds. Serial partial writes share one timeout budget. These are host-side write budgets, not guaranteed delivery or real-time deadlines.
 
 Call `drain_responses()` each cycle in a send-only loop to discard buffered replies without waiting. Each call discards at most 4096 bytes to bound receive work. Omit draining if you need to parse replies instead. Transports are intended for a single caller; do not read or write them concurrently.
+
+## Threaded MAVLink telemetry
+
+`MavlinkTelemetry` receives on its own thread; callers read frozen snapshots without connection I/O:
+
+```python
+from beta_client.mavlink import MavlinkTelemetry
+
+with MavlinkTelemetry('tcp:127.0.0.1:5762') as telemetry:
+    sample = telemetry.snapshot()
+    print(sample.altitude, sample.altitude_at, sample.armed)
+```
+
+For serial, pass a device endpoint such as `/dev/ttyUSB0` and `baud=57600`. Context entry waits for a vehicle heartbeat and accepted 50 Hz interval requests for `VFR_HUD` and `ATTITUDE`. Snapshot fields can be `None` until received; timestamps use local monotonic time. Consumers must check freshness and validity before control. Worker failures raise from `snapshot()` with the original cause; reconnection is not automatic. The worker owns the connection and closes it on exit. Protocol waits are bounded, but initial connection opening is subject to pymavlink and operating-system behavior.
+
+See the [flight control flow](examples/msp_mavlink_flight/README.md#threaded-telemetry-and-altitude-control) for how altitude drives MSP throttle commands.

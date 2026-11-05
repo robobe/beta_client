@@ -1,7 +1,9 @@
+import ast
 from pathlib import Path
 import sys
 import unittest
-from unittest.mock import patch
+from types import SimpleNamespace
+from unittest.mock import Mock, patch
 
 EXAMPLE = Path(__file__).resolve().parents[1] / 'examples' / 'msp_mavlink_flight'
 with patch.object(sys, 'path', [str(EXAMPLE), *sys.path]):
@@ -31,3 +33,22 @@ class FlightRcTests(unittest.TestCase):
         controller.reset()
         controller.update(0, 10, 1, landing=True)
         self.assertEqual(controller.update(0, 10, 1.1, landing=True), 1349)
+
+
+class FlightTelemetryTests(unittest.TestCase):
+    def test_mission_updates_controller_only_for_new_sample(self):
+        # Exercise the real mission branch without starting SITL or physics.
+        tree = ast.parse((EXAMPLE / 'main.py').read_text())
+        branch = next(node for node in ast.walk(tree) if isinstance(node, ast.If)
+                      and ast.unparse(node.test) == 'sample.altitude_at > last_sample')
+        code = compile(ast.Module(body=[branch], type_ignores=[]), 'mission-sample', 'exec')
+        controller = Mock(throttle=1400)
+        controller.update.return_value = 1450
+        context = dict(sample=SimpleNamespace(altitude_at=1.0), last_sample=0.0,
+                       controller=controller, target=10.0, alt=2.0, state='takeoff')
+        exec(code, context)
+        exec(code, context)
+        controller.update.assert_called_once_with(10.0, 2.0, 1.0, landing=False)
+        context['sample'] = SimpleNamespace(altitude_at=2.0)
+        exec(code, context)
+        self.assertEqual(controller.update.call_count, 2)

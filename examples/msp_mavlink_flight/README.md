@@ -5,7 +5,7 @@ This example uses an experimental cascaded altitude controller in simulation. Th
 ```mermaid
 flowchart LR
     Mission[Flight mission] -->|RC values| MSP[MSP RC sender]
-    MAV[MAVLink telemetry reader] -->|Armed state and altitude| Mission
+    MAV[MAVLink worker thread] -->|Armed state and altitude| Mission
     MSP -->|TCP 5761| SITL[Betaflight SITL]
     SITL -->|TCP 5762| MAV
     SITL -->|UDP 9002, motors| Bullet[Bullet physics]
@@ -53,3 +53,25 @@ uv run --extra flight --locked python examples/msp_mavlink_flight/main.py
 ```
 
 The `flight` extra installs the local `bullet_drone` project configured in `pyproject.toml`. The VS Code task uses the same environment. TCP uses the library defaults: a 20 ms write timeout and a 3-second connection timeout.
+
+## Threaded telemetry and altitude control
+
+The library's `MavlinkTelemetry` owns a pymavlink connection on a worker thread. Setup waits for a vehicle heartbeat and accepted requests for `VFR_HUD` and `ATTITUDE` at 50 Hz. The worker keeps telemetry received during setup, filters messages to the selected vehicle component, and publishes immutable snapshots.
+
+```mermaid
+flowchart LR
+    SITL[Betaflight SITL] -->|VFR_HUD.alt| Worker[MAVLink worker thread]
+    Worker --> Snapshot[Immutable snapshot]
+    Snapshot -->|Altitude and receive timestamp| Controller[Altitude and velocity controller]
+    Target[Target altitude] --> Controller
+    Controller -->|Throttle PWM| MSP[Library MSP sender]
+    MSP --> SITL
+```
+
+The mission reads one snapshot per loop, updates the controller only when the altitude timestamp changes, and keeps the previous throttle between samples. The controller estimates vertical speed from successive altitude samples instead of using `VFR_HUD.climb`. It uses altitude directly, without subtracting the starting altitude. Timestamps are local monotonic reception times, not sensor acquisition times.
+
+The mission checks finite altitude and stale telemetry. Worker errors surface on the next snapshot read and trigger mission cleanup. Requested rates can differ from the measured rates published in snapshots. Closing telemetry stops and joins the worker, which releases the connection. This does not replace end-to-end firmware and flight validation.
+
+## Simulation constants
+
+Mission timing and flight tolerances are named in `main.py`, with unit suffixes for seconds, metres and metres per second. Controller gains, speed limits and sample-gap handling are in `altitude_control.py`; PWM calibration remains in `pwm.py`. Physics timing, mass, gravity and fallback controller settings are in `physics.py`. These values retain the existing simulation tuning and are not hardware calibration.
