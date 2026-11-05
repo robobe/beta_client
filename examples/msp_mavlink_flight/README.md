@@ -56,7 +56,7 @@ The `flight` extra installs the local `bullet_drone` project configured in `pypr
 
 ## Threaded telemetry and altitude control
 
-The library's `MavlinkTelemetry` owns a pymavlink connection on a worker thread. Setup waits for a vehicle heartbeat and accepted requests for `VFR_HUD` and `ATTITUDE` at 50 Hz. The worker keeps telemetry received during setup, filters messages to the selected vehicle component, and publishes immutable snapshots.
+The library's `MavlinkTelemetry` owns a pymavlink connection on a worker thread. Startup waits only for a vehicle heartbeat. The mission then calls `set_message_rate` for `VFR_HUD` and `ATTITUDE` at its named `TELEMETRY_RATE_HZ` of 50 Hz. Each call waits synchronously for acceptance and raises on rejection or missing acknowledgement. The worker keeps telemetry received while waiting for acknowledgements, filters messages to the selected vehicle component, and publishes immutable snapshots.
 
 ```mermaid
 flowchart LR

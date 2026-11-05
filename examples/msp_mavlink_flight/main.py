@@ -8,6 +8,7 @@ import time
 
 from altitude_control import AltitudeControl
 from beta_client.mavlink import MavlinkTelemetry
+from pymavlink import mavutil
 from msp_rc import MspRcSender
 from pwm import THROTTLE_MIN
 from physics import run as run_physics
@@ -34,6 +35,7 @@ HOVER_SPEED_TOLERANCE_M_S = 0.5
 LANDING_ALTITUDE_TOLERANCE_M = 0.2
 LANDING_SPEED_TOLERANCE_M_S = 0.4
 MAVLINK_ENDPOINT = 'tcp:127.0.0.1:5762'
+TELEMETRY_RATE_HZ = 50
 STATE_COLOR = '\033[1;36m'
 COLOR_RESET = '\033[0m'
 
@@ -68,6 +70,9 @@ try:
     rc = MspRcSender()
     telemetry = MavlinkTelemetry(MAVLINK_ENDPOINT)
     telemetry.start()
+    # Request the streams required by this mission, waiting for each ACK.
+    telemetry.set_message_rate(mavutil.mavlink.MAVLINK_MSG_ID_VFR_HUD, TELEMETRY_RATE_HZ)
+    telemetry.set_message_rate(mavutil.mavlink.MAVLINK_MSG_ID_ATTITUDE, TELEMETRY_RATE_HZ)
     state = 'disarmed'
     print_state('disarmed')
     started = entered = time.monotonic()

@@ -92,12 +92,14 @@ Call `drain_responses()` each cycle in a send-only loop to discard buffered repl
 
 ```python
 from beta_client.mavlink import MavlinkTelemetry
+from pymavlink import mavutil
 
 with MavlinkTelemetry('tcp:127.0.0.1:5762') as telemetry:
+    telemetry.set_message_rate(mavutil.mavlink.MAVLINK_MSG_ID_VFR_HUD, rate_hz=50)
     sample = telemetry.snapshot()
     print(sample.altitude, sample.altitude_at, sample.armed)
 ```
 
-For serial, pass a device endpoint such as `/dev/ttyUSB0` and `baud=57600`. Context entry waits for a vehicle heartbeat and accepted 50 Hz interval requests for `VFR_HUD` and `ATTITUDE`. Snapshot fields can be `None` until received; timestamps use local monotonic time. Consumers must check freshness and validity before control. Worker failures raise from `snapshot()` with the original cause; reconnection is not automatic. The worker owns the connection and closes it on exit. Protocol waits are bounded, but initial connection opening is subject to pymavlink and operating-system behavior.
+For serial, pass a device endpoint such as `/dev/ttyUSB0` and `baud=57600`. Context entry waits only for a vehicle heartbeat. Call `set_message_rate(message_id, rate_hz, timeout=5.0)` to request each desired stream. It blocks until the selected vehicle acknowledges acceptance, raises `RuntimeError` on rejection, and raises `TimeoutError` if no final acknowledgement arrives. Only finite positive rates are supported; actual delivery rates may differ. Concurrent requests are serialized, with the ACK timeout starting when the worker sends the command. A timeout fails and closes the link, preventing a late acknowledgement from being attributed to another request. Snapshot fields can be `None` until received; timestamps use local monotonic time. Consumers must check freshness and validity before control. Worker failures raise from `snapshot()` with the original cause; reconnection is not automatic. The worker owns the connection and closes it on exit. Protocol waits are bounded, but initial connection opening is subject to pymavlink and operating-system behavior.
 
 See the [flight control flow](examples/msp_mavlink_flight/README.md#threaded-telemetry-and-altitude-control) for how altitude drives MSP throttle commands.
