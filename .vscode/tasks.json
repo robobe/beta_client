@@ -1,0 +1,95 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "SITL: Configure MAVLink UART2",
+      "type": "shell",
+      "command": "mkdir -p .sitl && cd .sitl && ../bin/betaflight_2026.6.2_SITL --config ../config/sitl-mavlink.txt",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "SITL: Run",
+      "type": "shell",
+      "command": "mkdir -p .sitl && cd .sitl && exec stdbuf -oL ../bin/betaflight_2026.6.2_SITL",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "isBackground": true,
+      "problemMatcher": {
+        "pattern": {
+          "regexp": "^(?!)$"
+        },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": "^\\[SITL\\]",
+          "endsPattern": "bind port 5761 for UART1"
+        }
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      }
+    },
+    {
+      "label": "MAVLink: Read heartbeat",
+      "type": "shell",
+      "command": "uv run --with pymavlink python examples/mavlink_heartbeat.py tcp:127.0.0.1:5762",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "SITL: Run and choose MAVLink example",
+      "dependsOrder": "sequence",
+      "dependsOn": [
+        "SITL: Run"
+      ],
+      "problemMatcher": [],
+      "type": "shell",
+      "command": "uv run --with pymavlink python ${input:mavlinkExample} tcp:127.0.0.1:5762",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      }
+    },
+    {
+      "label": "Bullet: SITL MAVLink flight",
+      "type": "shell",
+      "command": "uv run --project /home/user/workspaces/bullet --locked --all-packages --all-extras --all-groups python ${workspaceFolder}/examples/mavlink_flight/main.py",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Bullet: SITL MSP MAVLink flight",
+      "type": "shell",
+      "command": "uv run --project /home/user/workspaces/bullet --locked --all-packages --all-extras --all-groups python ${workspaceFolder}/examples/msp_mavlink_flight/main.py",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    }
+  ],
+  "inputs": [
+    {
+      "id": "mavlinkExample",
+      "type": "pickString",
+      "description": "Choose a MAVLink example",
+      "options": [
+        {
+          "label": "Heartbeat",
+          "value": "examples/mavlink_heartbeat.py"
+        },
+        {
+          "label": "Attitude and VFR_HUD rates",
+          "value": "examples/mavlink_rates.py"
+        }
+      ],
+      "default": "examples/mavlink_heartbeat.py"
+    }
+  ]
+}

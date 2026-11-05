@@ -1,0 +1,23 @@
+[project]
+name = "beta-client"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "robobe", email = "robobe2020@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "pymavlink>=2.4.50",
+    "pyserial>=3.5",
+]
+
+[project.optional-dependencies]
+flight = ["bullet-drone"]
+
+[tool.uv.sources]
+bullet-drone = { path = "/home/user/workspaces/bullet/bullet_drone", editable = true }
+
+[build-system]
+requires = ["uv_build>=0.9.21,<0.10.0"]
+build-backend = "uv_build"
