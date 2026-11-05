@@ -41,3 +41,15 @@ The controller estimates vertical speed from new MAVLink altitude samples. The i
 | `HEARTBEAT` | Armed state | Firmware default |
 
 `MAV_CMD_SET_MESSAGE_INTERVAL` requests the first two rates. The log reports actual received rates each second; delivery can be slower. Attitude angles are in radians.
+
+## Running with the client library
+
+The RC sender uses `beta_client.msp.send_rc` and `TcpTransport`. PWM values are named in `pwm.py`; their values and channel mapping match the existing simulation profile.
+
+From the repository root, run:
+
+```sh
+uv run --extra flight --locked python examples/msp_mavlink_flight/main.py
+```
+
+The `flight` extra installs the local `bullet_drone` project configured in `pyproject.toml`. The VS Code task uses the same environment. TCP uses the library defaults: a 20 ms write timeout and a 3-second connection timeout.

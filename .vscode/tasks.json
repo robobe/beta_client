@@ -67,7 +67,7 @@
     {
       "label": "Bullet: SITL MSP MAVLink flight",
       "type": "shell",
-      "command": "uv run --project /home/user/workspaces/bullet --locked --all-packages --all-extras --all-groups python ${workspaceFolder}/examples/msp_mavlink_flight/main.py",
+      "command": "uv run --extra flight --locked python ${workspaceFolder}/examples/msp_mavlink_flight/main.py",
       "options": {
         "cwd": "${workspaceFolder}"
       },

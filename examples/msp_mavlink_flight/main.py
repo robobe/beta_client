@@ -9,6 +9,7 @@ import time
 from altitude_control import AltitudeControl
 from mavlink_telemetry import MavlinkTelemetry
 from msp_rc import MspRcSender
+from pwm import THROTTLE_MIN
 from physics import run as run_physics
 
 def print_state(state):
@@ -60,7 +61,7 @@ try:
         if alt is not None and not math.isfinite(alt):
             raise RuntimeError('Invalid altitude')
         new = state
-        throttle, arm = 1000, False
+        throttle, arm = THROTTLE_MIN, False
         if state == 'disarmed' and now - entered > 12 and alt is not None:
             new = 'arming'
         elif state == 'arming':
@@ -116,7 +117,7 @@ try:
 finally:
     if rc:
         try:
-            rc.send(1000, False)
+            rc.send(THROTTLE_MIN, False)
         except OSError:
             pass
         rc.close()

@@ -22,7 +22,7 @@ For the flight examples, also install the `flight` extra:
 uv sync --extra flight
 ```
 
-This installs `bullet_drone` and its dependencies. The flight extra points to `/home/user/workspaces/bullet/bullet_drone` in `pyproject.toml`; change that path if your Bullet checkout is elsewhere. To keep the extra when running a command through `uv run`, include `--extra flight` in that command as well. The VS Code flight tasks currently use the separate Bullet workspace environment.
+This installs `bullet_drone` and its dependencies. The flight extra points to `/home/user/workspaces/bullet/bullet_drone` in `pyproject.toml`; change that path if your Bullet checkout is elsewhere. To keep the extra when running a command through `uv run`, include `--extra flight` in that command as well. The MSP flight task uses this project’s `flight` extra. The pure-MAVLink flight task still uses the separate Bullet workspace environment.
 
 After changing dependencies, run `uv sync` again to update the lockfile and environment. Use `uv sync --locked` when you want synchronization to fail if `uv.lock` needs updating.
 
@@ -50,7 +50,7 @@ Run these using **Terminal → Run Task**.
 | `Bullet: SITL MAVLink flight` | Starts the standalone MAVLink flight experiment and its SITL. **Not working** with the bundled firmware. |
 | `Bullet: SITL MSP MAVLink flight` | Starts the MSP control and MAVLink telemetry flight example and its SITL. |
 
-The flight tasks require the Bullet workspace at `/home/user/workspaces/bullet`; update the task commands if it is installed elsewhere.
+The MSP flight task requires the `bullet_drone` path configured in `pyproject.toml`. The pure-MAVLink flight task uses `/home/user/workspaces/bullet`; update its command if the workspace is installed elsewhere.
 
 ## Betaflight settings
 
@@ -64,3 +64,24 @@ The MSP flight example uses its own [SITL configuration](examples/msp_mavlink_fl
 - [Betaflight MSP and SITL](docs/betaflight-msp.md)
 
 MAVLink telemetry support alone does not establish that MAVLink RC commands are supported or configured. The bundled binary rejects the receiver setting used by the pure-MAVLink example; that integration needs further investigation.
+
+## MSP RC client
+
+Build and send eight RC channels in the receiver's configured order over TCP:
+
+```python
+from beta_client.msp import send_rc
+from beta_client.transport import TcpTransport
+
+with TcpTransport('127.0.0.1', 5761) as transport:
+    send_rc(transport, [1500, 1500, 1000, 1500, 1000, 2000, 1000, 1000])
+    transport.drain_responses()  # Discard replies in a send-only RC loop.
+```
+
+For serial, use `SerialTransport('/dev/ttyUSB0', 115200)` in the same way, with the device and baud rate configured for your receiver. Use `build_rc_message(channels)` when you need the encoded frame separately.
+
+The caller owns the connection and must send values continuously at a rate appropriate for the receiver and its failsafe. A single frame does not provide sustained control. Test in simulation first.
+
+TCP and serial writes block with a default 20 ms timeout, matching one 50 Hz control period. Override `timeout` to fit your loop budget; TCP connection establishment has a separate `connect_timeout` default of 3 seconds. Serial partial writes share one timeout budget. These are host-side write budgets, not guaranteed delivery or real-time deadlines.
+
+Call `drain_responses()` each cycle in a send-only loop to discard buffered replies without waiting. Each call discards at most 4096 bytes to bound receive work. Omit draining if you need to parse replies instead. Transports are intended for a single caller; do not read or write them concurrently.
