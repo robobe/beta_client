@@ -4,7 +4,7 @@ requires-python = ">=3.12"
 
 [[package]]
 name = "beta-client"
-version = "0.1.0"
+version = "0.2.0"
 source = { editable = "." }
 dependencies = [
     { name = "pymavlink" },
@@ -37,14 +37,16 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "bullet-msgs", marker = "extra == 'render'", editable = "../../workspaces/bullet/bullet_msgs" },
+    { name = "bullet-image-transport", marker = "extra == 'render'", editable = "../../workspaces/bullet/bullet_drone/libs/bullet_image_transport" },
+    { name = "bullet-simulation-protocol", marker = "extra == 'render'", editable = "../../workspaces/bullet/bullet_drone/libs/bullet_simulation_protocol" },
     { name = "click", specifier = ">=8.5.0" },
     { name = "loguru", specifier = ">=0.7.3" },
     { name = "pybullet", specifier = ">=3.2.7" },
+    { name = "pymavlink", marker = "extra == 'mavlink'", specifier = ">=2.4,<3" },
     { name = "pyyaml", specifier = ">=6.0.3" },
     { name = "pyzmq", marker = "extra == 'render'", specifier = ">=27,<28" },
 ]
-provides-extras = ["render"]
+provides-extras = ["render", "sitl", "mavlink"]
 
 [package.metadata.requires-dev]
 dev = [
