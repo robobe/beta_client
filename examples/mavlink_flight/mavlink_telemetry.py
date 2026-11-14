@@ -1,5 +1,8 @@
 """Read the armed state and altitude exclusively from MAVLink."""
 import time
+from dataclasses import replace, astuple
+from beta_client.entities import TelemetrySnapshot, Heartbeat, Attitude, VfrHud, RcChannels, RcChannelsOverride
+from beta_client.mavlink import decode
 from pymavlink import mavutil
 
 
@@ -8,10 +11,7 @@ class MavlinkTelemetry:
         self.connection = mavutil.mavlink_connection('tcp:127.0.0.1:5762')
         if not self.connection.wait_heartbeat(timeout=10):
             raise TimeoutError('No MAVLink heartbeat')
-        self.armed = False
-        self.altitude = None
-        self.heartbeat_at = self.altitude_at = 0.0
-        self.attitude = None
+        self._snapshot = TelemetrySnapshot()
         self.counts = {'VFR_HUD': 0, 'ATTITUDE': 0}
         self.rate_started = time.monotonic()
         for name, message_id in (('VFR_HUD', mavutil.mavlink.MAVLINK_MSG_ID_VFR_HUD),
@@ -36,15 +36,13 @@ class MavlinkTelemetry:
         while message := self.connection.recv_match(blocking=False):
             now = time.monotonic()
             if message.get_type() == 'HEARTBEAT':
-                self.armed = bool(message.base_mode & mavutil.mavlink.MAV_MODE_FLAG_SAFETY_ARMED)
-                self.heartbeat_at = now
+                self._snapshot = replace(self._snapshot, heartbeat=decode(Heartbeat, message), heartbeat_at=now)
             elif message.get_type() == 'ATTITUDE':
                 self.counts['ATTITUDE'] += 1
-                self.attitude = (message.roll, message.pitch, message.yaw)
+                self._snapshot = replace(self._snapshot, attitude=decode(Attitude, message), attitude_at=now)
             elif message.get_type() == 'VFR_HUD':
                 self.counts['VFR_HUD'] += 1
-                self.altitude = message.alt
-                self.altitude_at = now
+                self._snapshot = replace(self._snapshot, vfr_hud=decode(VfrHud, message), vfr_hud_at=now)
 
     def rates(self):
         now = time.monotonic()
@@ -54,10 +52,14 @@ class MavlinkTelemetry:
         self.rate_started = now
         return rates
 
+    def snapshot(self) -> TelemetrySnapshot:
+        return self._snapshot
+
     def send(self, throttle, arm):
-        self.connection.mav.rc_channels_override_send(
-            self.connection.target_system, self.connection.target_component,
-            1500, 1500, throttle, 1500, 2000 if arm else 1000, 2000, 1000, 1000)
+        channels = RcChannels((1500, 1500, throttle, 1500, 2000 if arm else 1000, 2000, 1000, 1000))
+        payload = RcChannelsOverride(self.connection.target_system, self.connection.target_component,
+                                     *channels.values)
+        self.connection.mav.rc_channels_override_send(*astuple(payload)[:10])
 
     def close(self):
         self.connection.close()

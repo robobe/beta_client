@@ -1,6 +1,7 @@
 """Send this simulation's RC channel mapping through the MSP library."""
 
 from beta_client.msp import send_rc
+from beta_client.entities import RcChannels
 from beta_client.transport import TcpTransport
 
 from pwm import AUX_HIGH, AUX_LOW, CONTROL_CENTER
@@ -17,10 +18,10 @@ class MspRcSender:
 
     def send(self, throttle: int, arm: bool) -> None:
         # AETR, AUX1 arms, AUX2 holds angle mode, remaining AUX channels stay low.
-        send_rc(self.transport, [
+        send_rc(self.transport, RcChannels((
             CONTROL_CENTER, CONTROL_CENTER, throttle, CONTROL_CENTER,
             AUX_HIGH if arm else AUX_LOW, AUX_HIGH, AUX_LOW, AUX_LOW,
-        ])
+        )))
         # Consume replies so continuous RC sending cannot fill receive buffers.
         self.transport.drain_responses()
 

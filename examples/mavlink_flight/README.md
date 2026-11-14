@@ -36,3 +36,5 @@ uv run --project /home/user/workspaces/bullet --locked --all-packages --all-extr
 ```
 
 The example also requires `pymavlink` in the Bullet environment. The mission and its configuration have not been validated end to end.
+
+Telemetry uses shared `Heartbeat`, `Attitude`, and `VfrHud` payload entities. Read altitude from `snapshot().vfr_hud.alt` and freshness from `vfr_hud_at`. Both RC send paths construct the shared `RcChannels` entity before protocol encoding.

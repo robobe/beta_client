@@ -1,4 +1,6 @@
 """Experimental local-only takeoff and landing demonstration."""
+from pymavlink import mavutil
+
 import math
 from pathlib import Path
 import subprocess
@@ -48,11 +50,12 @@ try:
         if stop.is_set() or sitl.poll() is not None:
             raise RuntimeError(f'Simulation stopped: {physics_error}')
         telemetry.poll()
-        if now - telemetry.heartbeat_at > 3 and now - started > 5:
+        sample = telemetry.snapshot()
+        if now - sample.heartbeat_at > 3 and now - started > 5:
             raise RuntimeError('MAVLink heartbeat stale')
-        if now - telemetry.altitude_at > 3 and now - started > 10:
+        if now - sample.vfr_hud_at > 3 and now - started > 10:
             raise RuntimeError('MAVLink altitude stale')
-        alt = telemetry.altitude
+        alt = (sample.vfr_hud.alt if sample.vfr_hud else None)
         if alt is not None and not math.isfinite(alt):
             raise RuntimeError('Invalid altitude')
         new = state
@@ -61,7 +64,7 @@ try:
             new = 'arming'
         elif state == 'arming':
             arm = True
-            if telemetry.armed:
+            if bool(sample.heartbeat and sample.heartbeat.base_mode & mavutil.mavlink.MAV_MODE_FLAG_SAFETY_ARMED):
                 new = 'armed'
             elif now - entered > 15:
                 raise TimeoutError('Arming not confirmed')
@@ -70,12 +73,12 @@ try:
             new = 'takeoff'
         elif state in ('takeoff', 'hover', 'land'):
             arm = True
-            if not telemetry.armed:
+            if not bool(sample.heartbeat and sample.heartbeat.base_mode & mavutil.mavlink.MAV_MODE_FLAG_SAFETY_ARMED):
                 raise RuntimeError('Vehicle unexpectedly disarmed')
             target = 0.0 if state == 'land' else 10.0
-            if telemetry.altitude_at > last_sample:
-                throttle = controller.update(target, alt, telemetry.altitude_at, landing=state == 'land')
-                last_sample = telemetry.altitude_at
+            if sample.vfr_hud_at > last_sample:
+                throttle = controller.update(target, alt, sample.vfr_hud_at, landing=state == 'land')
+                last_sample = sample.vfr_hud_at
             else:
                 throttle = controller.throttle
             speed = controller.speed
@@ -90,7 +93,7 @@ try:
             elif now - entered > 60:
                 raise TimeoutError(f'{state} timed out')
         elif state == 'disarming':
-            if not telemetry.armed:
+            if not bool(sample.heartbeat and sample.heartbeat.base_mode & mavutil.mavlink.MAV_MODE_FLAG_SAFETY_ARMED):
                 print('state: disarmed', flush=True)
                 break
             if now - entered > 10:
@@ -103,7 +106,7 @@ try:
             print(f'state: {state}', flush=True)
         if now - last_log >= 1:
             rates = telemetry.rates()
-            print(f"altitude={alt} speed={speed:.2f} target_speed={controller.target_speed:.2f} throttle={throttle} armed={telemetry.armed} attitude={telemetry.attitude} VFR_HUD={rates['VFR_HUD']:.1f}Hz ATTITUDE={rates['ATTITUDE']:.1f}Hz", flush=True)
+            print(f"altitude={alt} speed={speed:.2f} target_speed={controller.target_speed:.2f} throttle={throttle} armed={bool(sample.heartbeat and sample.heartbeat.base_mode & mavutil.mavlink.MAV_MODE_FLAG_SAFETY_ARMED)} attitude={sample.attitude} VFR_HUD={rates['VFR_HUD']:.1f}Hz ATTITUDE={rates['ATTITUDE']:.1f}Hz", flush=True)
             last_log = now
         rc.send(throttle, arm)
         time.sleep(0.02)

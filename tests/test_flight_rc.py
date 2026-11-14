@@ -1,3 +1,4 @@
+from beta_client.entities import RcChannels
 import ast
 from pathlib import Path
 import sys
@@ -20,7 +21,7 @@ class FlightRcTests(unittest.TestCase):
             with self.subTest(arm=arm):
                 sender.send(1350, arm)
                 send_rc.assert_called_with(connect.return_value,
-                                           [1500, 1500, 1350, 1500, aux, 2000, 1000, 1000])
+                                           RcChannels((1500, 1500, 1350, 1500, aux, 2000, 1000, 1000)))
         self.assertEqual(connect.return_value.drain_responses.call_count, 2)
         sender.close()
         connect.return_value.close.assert_called_once()
@@ -40,15 +41,15 @@ class FlightTelemetryTests(unittest.TestCase):
         # Exercise the real mission branch without starting SITL or physics.
         tree = ast.parse((EXAMPLE / 'main.py').read_text())
         branch = next(node for node in ast.walk(tree) if isinstance(node, ast.If)
-                      and ast.unparse(node.test) == 'sample.altitude_at > last_sample')
+                      and ast.unparse(node.test) == 'sample.vfr_hud_at > last_sample')
         code = compile(ast.Module(body=[branch], type_ignores=[]), 'mission-sample', 'exec')
         controller = Mock(throttle=1400)
         controller.update.return_value = 1450
-        context = dict(sample=SimpleNamespace(altitude_at=1.0), last_sample=0.0,
+        context = dict(sample=SimpleNamespace(vfr_hud_at=1.0), last_sample=0.0,
                        controller=controller, target=10.0, alt=2.0, state='takeoff')
         exec(code, context)
         exec(code, context)
         controller.update.assert_called_once_with(10.0, 2.0, 1.0, landing=False)
-        context['sample'] = SimpleNamespace(altitude_at=2.0)
+        context['sample'] = SimpleNamespace(vfr_hud_at=2.0)
         exec(code, context)
         self.assertEqual(controller.update.call_count, 2)

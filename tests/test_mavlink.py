@@ -11,6 +11,9 @@ from beta_client.mavlink import MavlinkTelemetry
 
 
 def message(kind, source=(1, 1), **fields):
+    from pymavlink.dialects.v20 import common
+    definitions = {c.msgname: c for c in common.mavlink_map.values()}
+    fields = {**dict.fromkeys(definitions[kind].fieldnames, 0), **fields}
     return SimpleNamespace(get_type=lambda: kind, get_srcSystem=lambda: source[0],
                            get_srcComponent=lambda: source[1], **fields)
 
@@ -66,21 +69,21 @@ class MavlinkTests(unittest.TestCase):
         with patch('beta_client.mavlink.mavutil.mavlink_connection', side_effect=create):
             with MavlinkTelemetry('tcp:localhost:5762') as telemetry:
                 self.assertEqual(connection.commands, [])
-                self.assertIsNone(telemetry.snapshot().altitude)
+                self.assertIsNone((telemetry.snapshot().vfr_hud.alt if telemetry.snapshot().vfr_hud else None))
                 telemetry.set_message_rate(mavutil.mavlink.MAVLINK_MSG_ID_VFR_HUD, 50)
                 telemetry.set_message_rate(mavutil.mavlink.MAVLINK_MSG_ID_ATTITUDE, 50)
                 first = telemetry.snapshot()
-                self.assertEqual(first.altitude, 4.5)
-                self.assertTrue(first.armed)
+                self.assertEqual((first.vfr_hud.alt if first.vfr_hud else None), 4.5)
+                self.assertTrue(bool(first.heartbeat.base_mode & 128))
                 with self.assertRaises(FrozenInstanceError):
-                    first.altitude = 10
+                    first.vfr_hud = None
                 connection.messages.put(message('VFR_HUD', source=(2, 1), alt=99))
                 connection.messages.put(message('ATTITUDE', roll=1, pitch=2, yaw=3))
                 self.wait_for(lambda: telemetry.snapshot().attitude is not None)
                 sample = telemetry.snapshot()
-                self.assertEqual(sample.altitude, 4.5)
-                self.assertEqual(sample.attitude, (1, 2, 3))
-                self.assertGreater(sample.altitude_at, 0)
+                self.assertEqual((sample.vfr_hud.alt if sample.vfr_hud else None), 4.5)
+                self.assertEqual((sample.attitude.roll, sample.attitude.pitch, sample.attitude.yaw), (1, 2, 3))
+                self.assertGreater(sample.vfr_hud_at, 0)
                 self.assertGreater(sample.attitude_at, 0)
                 self.assertIsNone(first.attitude)
                 self.assertEqual([args[4] for args in connection.commands], [74, 30])
@@ -140,7 +143,7 @@ class MavlinkTests(unittest.TestCase):
                 # Rates use counts over actual elapsed time, independently of requested rate.
                 with patch('beta_client.mavlink.RATE_WINDOW', 0):
                     connection.messages.put(message('VFR_HUD', alt=8))
-                    self.wait_for(lambda: telemetry.snapshot().altitude == 8)
+                    self.wait_for(lambda: (telemetry.snapshot().vfr_hud.alt if telemetry.snapshot().vfr_hud else None) == 8)
                     self.assertGreater(telemetry.snapshot().vfr_hud_hz, 0)
                 # Only the worker invokes the connection, including while snapshots are read.
                 for _ in range(100):

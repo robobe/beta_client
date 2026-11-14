@@ -75,3 +75,5 @@ The mission checks finite altitude and stale telemetry. Worker errors surface on
 ## Simulation constants
 
 Mission timing and flight tolerances are named in `main.py`, with unit suffixes for seconds, metres and metres per second. Controller gains, speed limits and sample-gap handling are in `altitude_control.py`; PWM calibration remains in `pwm.py`. Physics timing, mass, gravity and fallback controller settings are in `physics.py`. These values retain the existing simulation tuning and are not hardware calibration.
+
+Telemetry uses shared `Heartbeat`, `Attitude`, and `VfrHud` payload entities. Read altitude from `snapshot().vfr_hud.alt` and freshness from `vfr_hud_at`. Both RC send paths construct the shared `RcChannels` entity before protocol encoding.

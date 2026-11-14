@@ -4,9 +4,11 @@ from dataclasses import dataclass, field, replace
 import math
 import threading
 import time
-from typing import Self
+from typing import Self, TypeVar, Any
 
 from pymavlink import mavutil
+from dataclasses import fields, MISSING
+from beta_client.entities import Attitude, Heartbeat, VfrHud, TelemetrySnapshot, CommandLong, CommandAck
 
 DEFAULT_BAUD = 57600
 # Allow firmware startup and a bounded wait for each rate acknowledgement.
@@ -20,18 +22,6 @@ MAX_MESSAGE_ID = 0xFFFFFF
 MAX_INTERVAL_US = 0x7FFFFFFF
 
 
-@dataclass(frozen=True)
-class TelemetrySnapshot:
-    altitude: float | None = None
-    attitude: tuple[float, float, float] | None = None
-    armed: bool | None = None
-    altitude_at: float = 0.0
-    attitude_at: float = 0.0
-    heartbeat_at: float = 0.0
-    vfr_hud_hz: float = 0.0
-    attitude_hz: float = 0.0
-
-
 @dataclass
 class _RateRequest:
     message_id: int
@@ -39,6 +29,14 @@ class _RateRequest:
     timeout: float
     done: threading.Event = field(default_factory=threading.Event)
     error: Exception | None = None
+
+
+Entity = TypeVar("Entity")
+
+
+def decode(entity_type: type[Entity], message: Any) -> Entity:
+    """Copy a decoded pymavlink payload into an immutable entity."""
+    return entity_type(**{f.name: getattr(message, f.name, f.default) if f.default is not MISSING else getattr(message, f.name) for f in fields(entity_type)})
 
 
 class MavlinkTelemetry:
@@ -108,6 +106,7 @@ class MavlinkTelemetry:
                 raise RuntimeError('Telemetry is not ready, call start first')
             return self._snapshot
 
+
     def close(self) -> None:
         """Stop reception and wait for the worker to release its connection."""
         self._stop.set()
@@ -144,14 +143,13 @@ class MavlinkTelemetry:
                     if identity != source:
                         message = None
                     elif kind == 'HEARTBEAT':
-                        updates.update(armed=bool(message.base_mode & mavutil.mavlink.MAV_MODE_FLAG_SAFETY_ARMED),
-                                       heartbeat_at=now)
+                        updates.update(heartbeat=decode(Heartbeat, message), heartbeat_at=now)
                     elif kind == 'VFR_HUD':
                         counts[kind] += 1
-                        updates.update(altitude=message.alt, altitude_at=now)
+                        updates.update(vfr_hud=decode(VfrHud, message), vfr_hud_at=now)
                     elif kind == 'ATTITUDE':
                         counts[kind] += 1
-                        updates.update(attitude=(message.roll, message.pitch, message.yaw), attitude_at=now)
+                        updates.update(attitude=decode(Attitude, message), attitude_at=now)
                 elapsed = now - rate_started
                 if elapsed >= RATE_WINDOW:
                     updates.update(vfr_hud_hz=counts['VFR_HUD'] / elapsed,
@@ -175,9 +173,9 @@ class MavlinkTelemetry:
                 if request is None:
                     receive()
                     continue
-                connection.mav.command_long_send(
-                    *source, mavutil.mavlink.MAV_CMD_SET_MESSAGE_INTERVAL, 0,
-                    request.message_id, request.interval_us, 0, 0, 0, 0, 0)
+                command = CommandLong(*source, mavutil.mavlink.MAV_CMD_SET_MESSAGE_INTERVAL, 0,
+                                      request.message_id, request.interval_us, 0, 0, 0, 0, 0)
+                connection.mav.command_long_send(*(getattr(command, f.name) for f in fields(command)))
                 deadline = time.monotonic() + request.timeout
                 while True:
                     remaining = deadline - time.monotonic()
@@ -189,7 +187,8 @@ class MavlinkTelemetry:
                     if (message is None or message.get_type() != 'COMMAND_ACK'
                             or message.command != mavutil.mavlink.MAV_CMD_SET_MESSAGE_INTERVAL):
                         continue
-                    if message.result == mavutil.mavlink.MAV_RESULT_IN_PROGRESS:
+                    ack = decode(CommandAck, message)
+                    if ack.result == mavutil.mavlink.MAV_RESULT_IN_PROGRESS:
                         continue
                     if message.result != mavutil.mavlink.MAV_RESULT_ACCEPTED:
                         request.error = RuntimeError(
